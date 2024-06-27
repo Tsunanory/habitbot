@@ -1,3 +1,4 @@
+# habits/views.py
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -39,10 +40,11 @@ class HabitListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Habit.objects.filter(user=self.request.user)
+        return Habit.objects.filter(user=self.request.user).order_by('id')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
 
 
 class HabitPublicListView(generics.ListAPIView):
@@ -58,4 +60,5 @@ class HabitRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Habit.objects.filter(user=self.request.user)
+        return Habit.objects.filter(user=self.request.user).order_by('id')
+

@@ -5,6 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, Conversati
 import requests
 from django.conf import settings
 
+logging.basicConfig(level=logging.INFO)
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
@@ -12,17 +13,14 @@ logger = logging.getLogger(__name__)
 
 REGISTER_USERNAME, REGISTER_PASSWORD, LOGIN_USERNAME, LOGIN_PASSWORD, CREATE_ACTION, CREATE_TIME, CREATE_PLACE, EDIT_HABIT_ID, EDIT_ACTION, EDIT_TIME, EDIT_PLACE, DELETE_HABIT_ID = range(12)
 
-
 async def start_register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Please enter your username to register:')
     return REGISTER_USERNAME
-
 
 async def register_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['register_username'] = update.message.text
     await update.message.reply_text('Please enter your password:')
     return REGISTER_PASSWORD
-
 
 async def register_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     username = context.user_data['register_username']
@@ -44,17 +42,14 @@ async def register_password(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text('Registration failed. Try again.')
     return ConversationHandler.END
 
-
 async def start_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Please enter your username to log in:')
     return LOGIN_USERNAME
-
 
 async def login_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['login_username'] = update.message.text
     await update.message.reply_text('Please enter your password:')
     return LOGIN_PASSWORD
-
 
 async def login_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     username = context.user_data['login_username']
@@ -72,7 +67,6 @@ async def login_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text('Login failed. Try again.')
     return ConversationHandler.END
 
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'access_token' in context.user_data:
         await update.message.reply_text(
@@ -85,7 +79,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         await update.message.reply_text('Use /register to sign up or /login to log in.')
 
-
 async def list_habits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'access_token' not in context.user_data:
         await update.message.reply_text('Please log in first using /login.')
@@ -95,14 +88,18 @@ async def list_habits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     response = requests.get(f'{settings.BACKEND_URL}/api/habits/', headers=headers)
     if response.status_code == 200:
         habits = response.json()
-        if not habits:
-            await update.message.reply_text('You don\'t have any habits yet.')
+        logger.info(f'Habits response: {habits}')  # Log the response to debug
+
+        if 'results' in habits and isinstance(habits['results'], list):  # Ensure habits is a list
+            if not habits['results']:
+                await update.message.reply_text('Your list of habits is empty.')
+            else:
+                habit_list = '\n'.join([f'{habit["id"]}: {habit["action"]} at {habit["time"]} in {habit["place"]}' for habit in habits['results']])
+                await update.message.reply_text(f'Your habits:\n{habit_list}')
         else:
-            habit_list = '\n'.join([f'{habit["action"]} at {habit["time"]} in {habit["place"]}' for habit in habits])
-            await update.message.reply_text(f'Your habits:\n{habit_list}')
+            await update.message.reply_text('Failed to retrieve habits. Invalid response format.')
     else:
         await update.message.reply_text('Failed to retrieve habits.')
-
 
 async def list_public_habits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     response = requests.get(f'{settings.BACKEND_URL}/api/habits/public/')
@@ -110,76 +107,71 @@ async def list_public_habits(update: Update, context: ContextTypes.DEFAULT_TYPE)
         habits = response.json()
         logger.info(f'Public habits response: {habits}')  # Log the response to debug
 
-        # Check if the 'results' key is present and is a list
-        if 'results' in habits and isinstance(habits['results'], list):
+        if 'results' in habits and isinstance(habits['results'], list):  # Ensure habits is a list
             if not habits['results']:
                 await update.message.reply_text('No public habits available.')
             else:
-                habit_list = '\n'.join([f'{habit["action"]} at {habit["time"]} in {habit["place"]}' for habit in habits['results']])
+                habit_list = '\n'.join([f'{habit["id"]}: {habit["action"]} at {habit["time"]} in {habit["place"]}' for habit in habits['results']])
                 await update.message.reply_text(f'Public habits:\n{habit_list}')
         else:
             await update.message.reply_text('Failed to retrieve public habits. Invalid response format.')
     else:
         await update.message.reply_text('Failed to retrieve public habits.')
 
-
 async def create_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Enter the action for the new habit:')
     return CREATE_ACTION
 
-
 async def save_habit_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_action'] = update.message.text
-    await update.message.reply_text('Enter the time for the new habit:')
+    await update.message.reply_text('Enter the time for the new habit (HH:MM):')
     return CREATE_TIME
-
 
 async def save_habit_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_time'] = update.message.text
     await update.message.reply_text('Enter the place for the new habit:')
     return CREATE_PLACE
 
-
 async def save_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     action = context.user_data['habit_action']
     time = context.user_data['habit_time']
     place = update.message.text
     headers = {'Authorization': f'Bearer {context.user_data["access_token"]}'}
-    response = requests.post(f'{settings.BACKEND_URL}/api/habits/', headers=headers, data={
+    payload = {
         'action': action,
         'time': time,
         'place': place,
-        'is_public': False  # or True, depending on your requirements
-    })
+        'is_public': False,  # or True, depending on your requirements
+        'duration': 60,  # default duration, change as needed
+        'frequency': 1  # default frequency, change as needed
+    }
+    response = requests.post(f'{settings.BACKEND_URL}/api/habits/', headers=headers, data=payload)
+    logger.info(f'Create habit response: {response.status_code}, {response.text}')  # Log the response to debug
     if response.status_code == 201:
         await update.message.reply_text('Habit created successfully!')
     else:
-        await update.message.reply_text('Failed to create habit. Try again.')
+        await update.message.reply_text(f'Failed to create habit. {response.text}')
     return ConversationHandler.END
 
-
 async def start_edit_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await list_habits(update, context)
     await update.message.reply_text('Enter the ID of the habit you want to edit:')
     return EDIT_HABIT_ID
-
 
 async def edit_habit_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_id'] = update.message.text
     await update.message.reply_text('Enter the new action for the habit:')
     return EDIT_ACTION
 
-
 async def edit_habit_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_action'] = update.message.text
     await update.message.reply_text('Enter the new time for the habit:')
     return EDIT_TIME
 
-
 async def edit_habit_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_time'] = update.message.text
     await update.message.reply_text('Enter the new place for the habit:')
     return EDIT_PLACE
-
 
 async def save_edited_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     habit_id = context.user_data['habit_id']
@@ -198,11 +190,10 @@ async def save_edited_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text('Failed to update habit. Try again.')
     return ConversationHandler.END
 
-
 async def start_delete_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await list_habits(update, context)
     await update.message.reply_text('Enter the ID of the habit you want to delete:')
     return DELETE_HABIT_ID
-
 
 async def delete_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     habit_id = update.message.text
@@ -214,19 +205,15 @@ async def delete_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text('Failed to delete habit. Try again.')
     return ConversationHandler.END
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Hi! Use /register to sign up or /login to log in.')
-
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(update.message.text)
 
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Operation cancelled.')
     return ConversationHandler.END
-
 
 def main() -> None:
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
@@ -290,7 +277,6 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     application.run_polling()
-
 
 if __name__ == '__main__':
     main()
