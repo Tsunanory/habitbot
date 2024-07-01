@@ -11,9 +11,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 REGISTER_USERNAME, REGISTER_PASSWORD, LOGIN_USERNAME, LOGIN_PASSWORD = range(4)
-CREATE_IS_PLEASANT, CREATE_ACTION, CREATE_TIME, CREATE_PLACE, CREATE_BOUND, CREATE_PUBLIC, CHOOSE_OR_CREATE_PLEASANT_HABIT = range(4, 11)
-EDIT_HABIT_ID, EDIT_ACTION, EDIT_TIME, EDIT_PLACE = range(11, 15)
-DELETE_HABIT_ID = 15
+CREATE_IS_PLEASANT, CREATE_ACTION, CREATE_TIME, CREATE_PLACE, CREATE_BOUND, CREATE_PUBLIC, CREATE_REWARD, SET_REWARD, CHOOSE_OR_CREATE_PLEASANT_HABIT, CREATE_FREQUENCY, CREATE_DURATION = range(4, 15)
+EDIT_HABIT_ID, EDIT_ACTION, EDIT_TIME, EDIT_PLACE = range(15, 19)
+DELETE_HABIT_ID = 19
 LIST_PAGINATION = range(100, 101)
 PUB_LIST_PAGINATION = range(101, 102)
 
@@ -235,21 +235,24 @@ async def save_habit_is_pleasant(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text('Do you want this habit to be public? (yes/no)')
     return CREATE_PUBLIC
 
-
 async def save_habit_is_public(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text.lower()
     while response not in ['yes', 'no']:
         await update.message.reply_text('Please answer "yes" or "no". Do you want this habit to be public?')
         response = (await context.bot.get_chat(update.effective_chat.id)).text.lower()
     context.user_data['is_public'] = (response == 'yes')
+    await update.message.reply_text('How long will it take to perform this habit? (in seconds, not more than 120s)')
+    return CREATE_DURATION
 
-    if context.user_data['is_pleasant']:
+async def save_habit_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    response = update.message.text
+    if response.isdigit() and 1 <= int(response) <= 120:
+        context.user_data['habit_duration'] = int(response)
         await update.message.reply_text('Enter the action for the new habit:')
         return CREATE_ACTION
     else:
-        await update.message.reply_text('Enter the action for the new habit:')
-        return CREATE_ACTION
-
+        await update.message.reply_text('Please enter a valid number between 1 and 120. How long will it take to perform this habit? (in seconds, not more than 120s)')
+        return CREATE_DURATION
 
 async def save_habit_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_action'] = update.message.text
@@ -261,22 +264,39 @@ async def save_habit_time(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text('Enter the place for the new habit:')
     return CREATE_PLACE
 
+async def save_habit_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['habit_place'] = update.message.text
+    await update.message.reply_text('How many times a week should this habit be performed? (1-7)')
+    return CREATE_FREQUENCY
 
-async def save_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def save_habit_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    response = update.message.text
+    if response.isdigit() and 1 <= int(response) <= 7:
+        context.user_data['habit_frequency'] = int(response)
+        return await finalize_habit_creation(update, context)
+    else:
+        await update.message.reply_text('Please enter a valid number between 1 and 7. How many times a week should this habit be performed?')
+        return CREATE_FREQUENCY
+
+async def finalize_habit_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     action = context.user_data['habit_action']
     time = context.user_data['habit_time']
-    place = update.message.text
+    place = context.user_data['habit_place']
+    frequency = context.user_data['habit_frequency']
+    duration = context.user_data['habit_duration']
     is_pleasant = context.user_data.get('is_pleasant', False)
     is_public = context.user_data.get('is_public', False)
+    reward = context.user_data.get('habit_reward', None)
     headers = {'Authorization': f'Bearer {context.user_data["access_token"]}'}
     payload = {
         'action': action,
         'time': time,
         'place': place,
         'is_public': is_public,
-        'duration': 60,
-        'frequency': 1,
-        'is_pleasant': is_pleasant
+        'duration': duration,
+        'frequency': frequency,
+        'is_pleasant': is_pleasant,
+        'reward': reward,
     }
 
     try:
@@ -286,7 +306,7 @@ async def save_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             new_habit = response.json()
             context.user_data['new_habit_id'] = new_habit['id']
             logger.info(f'New habit created with ID: {new_habit["id"]}')
-            if is_pleasant:
+            if is_pleasant or reward:
                 await update.message.reply_text('Habit created successfully!')
                 return ConversationHandler.END
             else:
@@ -300,6 +320,22 @@ async def save_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text('Failed to create habit due to an unexpected error.')
         return ConversationHandler.END
 
+async def create_habit_reward(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    response = update.message.text.lower()
+    if response not in ['yes', 'no']:
+        await update.message.reply_text('Please answer "yes" or "no". Do you want to set a reward for this habit?')
+        return CREATE_REWARD
+
+    if response == 'yes':
+        await update.message.reply_text('Enter a reward for this habit:')
+        return SET_REWARD
+    else:
+        await update.message.reply_text('Do you want to bind another habit to this one? (yes/no)')
+        return CREATE_BOUND
+
+async def set_habit_reward(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['habit_reward'] = update.message.text
+    return await finalize_habit_creation(update, context)
 
 async def bind_pleasant_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text.lower()
@@ -493,12 +529,15 @@ def main() -> None:
         states={
             CREATE_IS_PLEASANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_is_pleasant)],
             CREATE_PUBLIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_is_public)],
+            CREATE_REWARD: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_habit_reward)],
+            SET_REWARD: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_habit_reward)],
+            CREATE_DURATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_duration)],
             CREATE_ACTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_action)],
             CREATE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_time)],
-            CREATE_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit)],
+            CREATE_PLACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_place)],
+            CREATE_FREQUENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_habit_frequency)],
             CREATE_BOUND: [MessageHandler(filters.TEXT & ~filters.COMMAND, bind_pleasant_habit)],
-            CHOOSE_OR_CREATE_PLEASANT_HABIT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, choose_or_create_pleasant_habit)],
+            CHOOSE_OR_CREATE_PLEASANT_HABIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_or_create_pleasant_habit)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
