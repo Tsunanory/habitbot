@@ -25,6 +25,7 @@ async def start_register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def register_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['register_username'] = update.message.text
+    context.user_data['telegram_id'] = update.message.chat_id
     await update.message.reply_text('Please enter your password:')
     return REGISTER_PASSWORD
 
@@ -32,9 +33,11 @@ async def register_username(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def register_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     username = context.user_data['register_username']
     password = update.message.text
+    telegram_id = context.user_data['telegram_id']  # Retrieve Telegram ID
     response = requests.post(f'{settings.BACKEND_URL}/api/register/', data={
         'username': username,
-        'password': password
+        'password': password,
+        'telegram_id': telegram_id
     })
     if response.status_code == 200:
         tokens = response.json()
@@ -49,18 +52,23 @@ async def register_password(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text('Registration failed. Try again.')
     return ConversationHandler.END
 
+
 async def start_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Please enter your username to log in:')
     return LOGIN_USERNAME
 
+
 async def login_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['login_username'] = update.message.text
+    context.user_data['telegram_id'] = update.message.chat_id
     await update.message.reply_text('Please enter your password:')
     return LOGIN_PASSWORD
+
 
 async def login_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     username = context.user_data['login_username']
     password = update.message.text
+    telegram_id = context.user_data['telegram_id']
     response = requests.post(f'{settings.BACKEND_URL}/api/login/', data={
         'username': username,
         'password': password
@@ -70,6 +78,13 @@ async def login_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data['access_token'] = tokens['access']
         context.user_data['refresh_token'] = tokens['refresh']
         await update.message.reply_text('Login successful!')
+
+        headers = {'Authorization': f'Bearer {tokens["access"]}'}
+        user_response = requests.get(f'{settings.BACKEND_URL}/api/users/me/', headers=headers)
+        if user_response.status_code == 200:
+            user_id = user_response.json().get('id')
+            requests.patch(f'{settings.BACKEND_URL}/api/users/{user_id}/', headers=headers,
+                           json={'telegram_id': telegram_id})
     else:
         await update.message.reply_text('Login failed. Try again.')
     return ConversationHandler.END
@@ -94,6 +109,13 @@ async def start_list_habits(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return ConversationHandler.END
 
     return await list_habits(update, context, page=1)
+
+
+async def register_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['register_username'] = update.message.text
+    context.user_data['telegram_id'] = update.message.chat_id
+    await update.message.reply_text('Please enter your password:')
+    return REGISTER_PASSWORD
 
 
 async def list_habits(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 1) -> int:

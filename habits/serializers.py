@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Habit
-from django.contrib.auth.models import User
+from users.models import CustomUser
 
 
 class HabitSerializer(serializers.ModelSerializer):
@@ -24,14 +24,14 @@ class HabitSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
-        fields = ('id', 'username', 'password')
+        model = CustomUser
+        fields = ('id', 'username', 'password', 'telegram_id')
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
-        user = User.objects.create_user(
+        user = CustomUser.objects.create_user(
             username=validated_data['username'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            telegram_id=validated_data.get('telegram_id', None)
         )
         return user
-

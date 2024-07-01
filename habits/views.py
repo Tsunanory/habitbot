@@ -1,11 +1,15 @@
-from rest_framework import generics, permissions
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
+import json
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.models import User
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import generics, permissions
+from django.contrib.auth import get_user_model
 from .models import Habit
 from .serializers import UserSerializer, HabitSerializer
+from django_celery_beat.models import PeriodicTask, CrontabSchedule
+
+User = get_user_model()
 
 
 @api_view(['POST'])
@@ -34,6 +38,33 @@ def login(request):
     return Response({'error': 'Invalid credentials'}, status=400)
 
 
+class UserDetailView(generics.RetrieveUpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
+def create_periodic_task(habit):
+    schedule, created = CrontabSchedule.objects.get_or_create(
+        hour=habit.time.hour,
+        minute=habit.time.minute,
+        day_of_week='*',
+        day_of_month='*',
+        month_of_year='*'
+    )
+
+
+    PeriodicTask.objects.create(
+        crontab=schedule,
+        name=f"send-habit-reminder-{habit.id}",
+        task='telegram_bot.tasks.send_habit_reminders',
+        args=json.dumps([habit.id]),
+    )
+
+
 class HabitListCreateView(generics.ListCreateAPIView):
     serializer_class = HabitSerializer
     permission_classes = [IsAuthenticated]
@@ -45,16 +76,9 @@ class HabitListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(is_pleasant=is_pleasant.lower() == 'true')
         return queryset
 
-    def list(self, request, *args, **kwargs):
-        no_pagination = self.request.query_params.get('no_pagination', 'false').lower() == 'true'
-        if no_pagination:
-            queryset = self.filter_queryset(self.get_queryset())
-            serializer = self.get_serializer(queryset, many=True)
-            return Response(serializer.data)
-        return super().list(request, *args, **kwargs)
-
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        habit = serializer.save(user=self.request.user)
+        create_periodic_task(habit)
 
 
 class HabitPublicListView(generics.ListAPIView):

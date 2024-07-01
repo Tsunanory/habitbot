@@ -1,5 +1,6 @@
-from django.contrib.auth.models import User
 from django.db import models
+
+from config import settings
 from .validators import (
     validate_reward_and_related_habit,
     validate_duration,
@@ -10,7 +11,7 @@ from .validators import (
 
 
 class Habit(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     place = models.CharField(max_length=255)
     time = models.TimeField()
     action = models.CharField(max_length=255)

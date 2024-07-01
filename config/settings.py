@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 from pathlib import Path
+
+from celery.schedules import crontab
 from dotenv import load_dotenv
 from datetime import timedelta
 import os
@@ -48,6 +50,10 @@ INSTALLED_APPS = [
     'corsheaders',
     'habits',
     'telegram_bot',
+    'django_celery_beat',
+    'django_celery_results',
+    'users',
+
 ]
 
 MIDDLEWARE = [
@@ -134,8 +140,20 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Europe/Berlin'
+
+CELERY_BEAT_SCHEDULE = {
+    'send-habit-reminders': {
+        'task': 'telegram_bot.tasks.send_habit_reminders',
+        'schedule': crontab(minute='*/1'),
+    },
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -176,3 +194,5 @@ SIMPLE_JWT = {
 }
 
 BACKEND_URL = 'http://127.0.0.1:8000'
+
+AUTH_USER_MODEL = 'users.CustomUser'
