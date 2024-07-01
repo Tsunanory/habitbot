@@ -1,5 +1,12 @@
 from django.contrib.auth.models import User
 from django.db import models
+from .validators import (
+    validate_reward_and_related_habit,
+    validate_duration,
+    validate_related_habit_is_pleasant,
+    validate_pleasant_habit_no_reward_or_related,
+    validate_frequency
+)
 
 
 class Habit(models.Model):
@@ -8,19 +15,21 @@ class Habit(models.Model):
     time = models.TimeField()
     action = models.CharField(max_length=255)
     is_pleasant = models.BooleanField(default=False)
-    related_habit = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL)
+    related_habit = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='bound_habits')
     frequency = models.PositiveIntegerField(default=1)
     reward = models.CharField(max_length=255, null=True, blank=True)
     duration = models.PositiveIntegerField()
     is_public = models.BooleanField(default=False)
 
+    def clean(self):
+        validate_reward_and_related_habit(self.reward, self.related_habit)
+        validate_duration(self.duration)
+        validate_pleasant_habit_no_reward_or_related(self)
+        validate_frequency(self.frequency)
+        if self.related_habit:
+            validate_related_habit_is_pleasant(self.related_habit)
+
     def save(self, *args, **kwargs):
-        if self.duration > 120:
-            raise ValueError("Duration cannot exceed 120 seconds")
-        if self.related_habit and self.reward:
-            raise ValueError("Cannot have both a related habit and a reward")
-        if self.is_pleasant and (self.reward or self.related_habit):
-            raise ValueError("Pleasant habit cannot have reward or related habit")
-        if self.frequency < 1 or self.frequency > 7:
-            raise ValueError("Frequency must be between 1 and 7 days")
+        self.clean()
         super().save(*args, **kwargs)
+
