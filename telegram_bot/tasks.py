@@ -13,6 +13,7 @@ TELEGRAM_API_URL = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 # Set up logging
 logger = logging.getLogger(__name__)
 
+
 @shared_task
 def send_habit_reminders(*args, **kwargs):
     now = timezone.now()
@@ -48,8 +49,10 @@ def send_habit_reminders(*args, **kwargs):
         else:
             logger.warning(f"User {habit.user.username} does not have a telegram_id set")
 
+
 def manual_send_habit_reminders():
     send_habit_reminders.apply()
+
 
 if __name__ == "__main__":
     manual_send_habit_reminders()

@@ -11,6 +11,7 @@ class HabitSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('user',)
 
+
     def get_related_habit(self, obj):
         if obj.related_habit:
             return {

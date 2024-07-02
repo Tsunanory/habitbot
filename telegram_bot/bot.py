@@ -111,13 +111,6 @@ async def start_list_habits(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return await list_habits(update, context, page=1)
 
 
-async def register_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data['register_username'] = update.message.text
-    context.user_data['telegram_id'] = update.message.chat_id
-    await update.message.reply_text('Please enter your password:')
-    return REGISTER_PASSWORD
-
-
 async def list_habits(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 1) -> int:
     headers = {'Authorization': f'Bearer {context.user_data["access_token"]}'}
     response = requests.get(f'{settings.BACKEND_URL}/api/habits/?page={page}', headers=headers)
@@ -244,9 +237,15 @@ async def paginate_list_public_habits(update: Update, context: ContextTypes.DEFA
             await update.message.reply_text('Invalid input. Please enter a valid page number or "quit" to leave list.')
             return PUB_LIST_PAGINATION
 
+
 async def create_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if 'access_token' not in context.user_data:
+        await update.message.reply_text('Please log in first using /login.')
+        return ConversationHandler.END
+
     await update.message.reply_text('Are you creating a pleasant habit? (yes/no)')
     return CREATE_IS_PLEASANT
+
 
 async def save_habit_is_pleasant(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text.lower()
@@ -257,6 +256,7 @@ async def save_habit_is_pleasant(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text('Do you want this habit to be public? (yes/no)')
     return CREATE_PUBLIC
 
+
 async def save_habit_is_public(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text.lower()
     while response not in ['yes', 'no']:
@@ -265,6 +265,7 @@ async def save_habit_is_public(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['is_public'] = (response == 'yes')
     await update.message.reply_text('How long will it take to perform this habit? (in seconds, not more than 120s)')
     return CREATE_DURATION
+
 
 async def save_habit_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text
@@ -276,20 +277,24 @@ async def save_habit_duration(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text('Please enter a valid number between 1 and 120. How long will it take to perform this habit? (in seconds, not more than 120s)')
         return CREATE_DURATION
 
+
 async def save_habit_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_action'] = update.message.text
     await update.message.reply_text('Enter the time for the new habit (HH:MM):')
     return CREATE_TIME
+
 
 async def save_habit_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_time'] = update.message.text
     await update.message.reply_text('Enter the place for the new habit:')
     return CREATE_PLACE
 
+
 async def save_habit_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_place'] = update.message.text
     await update.message.reply_text('How many times a week should this habit be performed? (1-7)')
     return CREATE_FREQUENCY
+
 
 async def save_habit_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text
@@ -299,6 +304,7 @@ async def save_habit_frequency(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await update.message.reply_text('Please enter a valid number between 1 and 7. How many times a week should this habit be performed?')
         return CREATE_FREQUENCY
+
 
 async def finalize_habit_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     action = context.user_data['habit_action']
@@ -342,6 +348,7 @@ async def finalize_habit_creation(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text('Failed to create habit due to an unexpected error.')
         return ConversationHandler.END
 
+
 async def create_habit_reward(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text.lower()
     if response not in ['yes', 'no']:
@@ -355,9 +362,11 @@ async def create_habit_reward(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text('Do you want to bind another habit to this one? (yes/no)')
         return CREATE_BOUND
 
+
 async def set_habit_reward(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['habit_reward'] = update.message.text
     return await finalize_habit_creation(update, context)
+
 
 async def bind_pleasant_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     response = update.message.text.lower()
@@ -367,8 +376,12 @@ async def bind_pleasant_habit(update: Update, context: ContextTypes.DEFAULT_TYPE
         return CREATE_BOUND
 
     if response == 'no':
-        await update.message.reply_text('Habit created successfully!')
-        return ConversationHandler.END
+        if context.user_data['is_pleasant']:
+            await update.message.reply_text('Habit created successfully!')
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text('Do you want to set a reward for this habit? (yes/no)')
+            return CREATE_REWARD
 
     headers = {'Authorization': f'Bearer {context.user_data["access_token"]}'}
     response = requests.get(f'{settings.BACKEND_URL}/api/habits/', headers=headers, params={'is_pleasant': 'true', 'no_pagination': 'true'})
@@ -423,8 +436,13 @@ async def choose_or_create_pleasant_habit(update: Update, context: ContextTypes.
 
 
 async def start_edit_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if 'access_token' not in context.user_data:
+        await update.message.reply_text('Please log in first using /login.')
+        return ConversationHandler.END
+
     await update.message.reply_text('Enter the ID of the habit you want to edit or type "quit" to cancel:')
     return EDIT_HABIT_ID
+
 
 async def edit_habit_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text.lower() == 'quit':
@@ -434,6 +452,7 @@ async def edit_habit_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await update.message.reply_text('Enter the new action for the habit or type "quit" to cancel:')
     return EDIT_ACTION
 
+
 async def edit_habit_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text.lower() == 'quit':
         await update.message.reply_text('Edit operation cancelled.')
@@ -442,6 +461,7 @@ async def edit_habit_action(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text('Enter the new time for the habit or type "quit" to cancel:')
     return EDIT_TIME
 
+
 async def edit_habit_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text.lower() == 'quit':
         await update.message.reply_text('Edit operation cancelled.')
@@ -449,6 +469,7 @@ async def edit_habit_time(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data['habit_time'] = update.message.text
     await update.message.reply_text('Enter the new place for the habit or type "quit" to cancel:')
     return EDIT_PLACE
+
 
 async def edit_habit_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text.lower() == 'quit':
@@ -496,6 +517,10 @@ async def save_edited_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def start_delete_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if 'access_token' not in context.user_data:
+        await update.message.reply_text('Please log in first using /login.')
+        return ConversationHandler.END
+
     await update.message.reply_text('Enter the ID of the habit you want to delete or type "quit" to cancel:')
     return DELETE_HABIT_ID
 
@@ -517,8 +542,10 @@ async def delete_habit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Hi! Use /register to sign up or /login to log in.')
 
+
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(update.message.text)
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Operation cancelled.')
