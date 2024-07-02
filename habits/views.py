@@ -48,14 +48,15 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 
 
 def create_periodic_task(habit):
+    # Create or get the schedule for the specific time the habit needs to run
     schedule, created = CrontabSchedule.objects.get_or_create(
         hour=habit.time.hour,
         minute=habit.time.minute,
         day_of_week='*',
         day_of_month='*',
-        month_of_year='*'
+        month_of_year='*',
+        timezone='Europe/Berlin'
     )
-
 
     PeriodicTask.objects.create(
         crontab=schedule,

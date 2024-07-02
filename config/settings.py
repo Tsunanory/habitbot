@@ -148,12 +148,8 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Europe/Berlin'
 
-CELERY_BEAT_SCHEDULE = {
-    'send-habit-reminders': {
-        'task': 'telegram_bot.tasks.send_habit_reminders',
-        'schedule': crontab(minute='*/1'),
-    },
-}
+CELERY_IMPORTS = ('habits.tasks',)
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

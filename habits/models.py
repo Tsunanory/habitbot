@@ -21,6 +21,7 @@ class Habit(models.Model):
     reward = models.CharField(max_length=255, null=True, blank=True)
     duration = models.PositiveIntegerField()
     is_public = models.BooleanField(default=False)
+    last_reminder_date = models.DateField(null=True, blank=True)
 
     def clean(self):
         validate_reward_and_related_habit(self.reward, self.related_habit)
